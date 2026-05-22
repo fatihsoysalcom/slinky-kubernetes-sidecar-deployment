@@ -1,0 +1,116 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: slinky-validator-deployment
+  labels:
+    app: slinky-validator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: slinky-validator
+  template:
+    metadata:
+      labels:
+        app: slinky-validator
+    spec:
+      volumes:
+        # Volume for Slinky configuration (optional, for complex config files)
+        - name: slinky-config-volume
+          configMap:
+            name: slinky-config
+      containers:
+        # Main validator node container (simulated for demonstration)
+        - name: validator-node
+          image: busybox:latest # Placeholder: Replace with your actual Cosmos validator image
+          ports:
+            - containerPort: 26656 # Example P2P port
+            - containerPort: 26657 # Example RPC port
+          command: ["/bin/sh", "-c"]
+          args:
+            - echo "Validator node running...";
+              sleep infinity; # Keeps the container running indefinitely
+          resources:
+            limits:
+              cpu: "500m"
+              memory: "1Gi"
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+
+        # Slinky oracle sidecar container
+        - name: slinky-oracle-sidecar
+          image: skipprotocol/slinky:latest # Official Slinky image
+          ports:
+            - containerPort: 8080 # Slinky's default API port for data queries
+          env:
+            # Essential Slinky configuration via environment variables
+            - name: SLINKY_CHAIN_ID
+              value: "your-cosmos-chain" # IMPORTANT: Replace with your actual chain ID (e.g., "osmosis-1")
+            - name: SLINKY_RPC_ENDPOINT
+              value: "http://localhost:26657" # Slinky connects to the local validator RPC within the same Pod
+            - name: SLINKY_GRPC_ENDPOINT
+              value: "http://localhost:9090" # Slinky connects to the local validator gRPC
+            - name: SLINKY_LISTEN_ADDR
+              value: "0.0.0.0:8080" # Slinky's API listen address
+            - name: SLINKY_METRICS_ADDR
+              value: "0.0.0.0:9000" # Slinky's metrics listen address
+            # For more advanced configuration, you can use a mounted config file.
+          volumeMounts:
+            - name: slinky-config-volume
+              mountPath: /etc/slinky # Mount path for Slinky config files (e.g., config.toml)
+          resources:
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: slinky-validator-service
+  labels:
+    app: slinky-validator
+spec:
+  selector:
+    app: slinky-validator
+  ports:
+    - protocol: TCP
+      port: 26657 # Expose validator RPC port
+      targetPort: 26657
+      name: validator-rpc
+    - protocol: TCP
+      port: 8080 # Expose Slinky API port
+      targetPort: 8080
+      name: slinky-api
+  type: ClusterIP # Use LoadBalancer for external access on cloud providers like DigitalOcean
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: slinky-config
+data:
+  # Example Slinky configuration file content (e.g., config.toml).
+  # This demonstrates how to provide more complex configuration to Slinky
+  # via a ConfigMap, which can then be mounted into the sidecar container.
+  # Uncomment and customize if you prefer file-based configuration over ENV vars.
+  config.toml: |
+    # Slinky Configuration Example
+    # For full configuration options, refer to Slinky documentation.
+    # [general]
+    # chain_id = "your-cosmos-chain"
+    # validator_rpc_endpoint = "http://localhost:26657"
+    # validator_grpc_endpoint = "http://localhost:9090"
+    # listen_address = "0.0.0.0:8080"
+    # metrics_address = "0.0.0.0:9000"
+
+    # [oracle]
+    # # Example: Configure price feeds
+    # # You would typically define specific price pairs and sources here.
+    # # For simplicity, this example just shows the structure.
+    # # price_feeds = [
+    # #   { symbol = "ATOM/USD", source = "binance", interval = "1s" },
+    # #   { symbol = "OSMO/USD", source = "coingecko", interval = "1s" }
+    # # ]
